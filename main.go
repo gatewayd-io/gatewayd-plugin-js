@@ -65,7 +65,10 @@ func main() {
 
 	// Provide the Value helper to the JS code to make it easier to create
 	// new values inside v1.Struct.
-	pluginInstance.Impl.VM.Set("Value", pluginInstance.Impl.VM.ToValue(v1.NewValue))
+	if err := pluginInstance.Impl.VM.Set("Value", pluginInstance.Impl.VM.ToValue(v1.NewValue)); err != nil {
+		logger.Error("Failed to set Value helper function", "error", err)
+		return
+	}
 
 	if cfg := cast.ToStringMap(plugin.PluginConfig["config"]); cfg != nil {
 		config := metrics.NewMetricsConfig(cfg)
@@ -92,17 +95,28 @@ func main() {
 		pluginInstance.Impl.RegisterFunctions(maps.Keys(plugin.Hooks))
 
 		// Register helper functions.
-		pluginInstance.Impl.VM.Set("btoa", func(call goja.FunctionCall) goja.Value {
+		if err := pluginInstance.Impl.VM.Set("btoa", func(call goja.FunctionCall) goja.Value {
 			return pluginInstance.Impl.VM.ToValue(base64.RawStdEncoding.EncodeToString([]byte(call.Arguments[0].String())))
-		})
-		pluginInstance.Impl.VM.Set("atob", func(call goja.FunctionCall) goja.Value {
+		}); err != nil {
+			logger.Error("Failed to set btoa helper function", "error", err)
+			return
+		}
+
+		if err := pluginInstance.Impl.VM.Set("atob", func(call goja.FunctionCall) goja.Value {
 			str, _ := base64.RawStdEncoding.DecodeString(call.Arguments[0].String())
 			return pluginInstance.Impl.VM.ToValue(string(str))
-		})
-		pluginInstance.Impl.VM.Set("parseSQL", func(call goja.FunctionCall) goja.Value {
+		}); err != nil {
+			logger.Error("Failed to set atob helper function", "error", err)
+			return
+		}
+
+		if err := pluginInstance.Impl.VM.Set("parseSQL", func(call goja.FunctionCall) goja.Value {
 			qStr, _ := pgQuery.ParseToJSON(call.Arguments[0].String())
 			return pluginInstance.Impl.VM.ToValue(qStr)
-		})
+		}); err != nil {
+			logger.Error("Failed to set parseSQL helper function", "error", err)
+			return
+		}
 	}
 
 	goplugin.Serve(&goplugin.ServeConfig{
