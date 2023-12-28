@@ -6,6 +6,7 @@ require (
 	github.com/dop251/goja v0.0.0-20231027120936-b396bb4c349d
 	github.com/dop251/goja_nodejs v0.0.0-20231122114759-e84d9a924c5c
 	github.com/gatewayd-io/gatewayd-plugin-sdk v0.1.8
+	github.com/getsentry/sentry-go v0.25.0
 	github.com/hashicorp/go-hclog v1.5.0
 	github.com/hashicorp/go-plugin v1.6.0
 	github.com/prometheus/client_golang v1.17.0

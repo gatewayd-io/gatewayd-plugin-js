@@ -28,5 +28,6 @@ plugins:
       - MAGIC_COOKIE_KEY=GATEWAYD_PLUGIN
       - MAGIC_COOKIE_VALUE=5712b87aa5d7e9f9e9ab643e6603181c5b796015cb1c09d6f5ada882bf2a1872
       - SCRIPT_PATH=./scripts/index.js
+      - SENTRY_DSN=https://439b580ade4a947cf16e5cfedd18f51f@o4504550475038720.ingest.sentry.io/4506475229413376
     # Checksum hash to verify the binary before loading
     checksum: dee4aa014a722e1865d91744a4fd310772152467d9c6ab4ba17fd9dd40d3f724
