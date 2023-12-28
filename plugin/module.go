@@ -1,18 +1,19 @@
 package plugin
 
 import (
+	sdkConfig "github.com/gatewayd-io/gatewayd-plugin-sdk/config"
 	v1 "github.com/gatewayd-io/gatewayd-plugin-sdk/plugin/v1"
 	goplugin "github.com/hashicorp/go-plugin"
 )
 
 var (
 	PluginID = v1.PluginID{
-		Name:      "plugin-template-go",
+		Name:      "gatewayd-plugin-js",
 		Version:   "0.0.1",
-		RemoteUrl: "github.com/gatewayd-io/plugin-template-go",
+		RemoteUrl: "github.com/gatewayd-io/gatewayd-plugin-js",
 	}
 	PluginMap = map[string]goplugin.Plugin{
-		"plugin-template-go": &TemplatePlugin{},
+		"gatewayd-plugin-js": &JSPlugin{},
 	}
 	// TODO: Handle this in a better way
 	// https://github.com/gatewayd-io/gatewayd-plugin-sdk/issues/3
@@ -27,51 +28,40 @@ var (
 			"Mostafa Moradian <mostafa@gatewayd.io>",
 		},
 		"license":    "Apache 2.0",
-		"projectUrl": "https://github.com/gatewayd-io/plugin-template-go",
+		"projectUrl": "https://github.com/gatewayd-io/gatewayd-plugin-js",
 		// Compile-time configuration
 		"config": map[string]interface{}{
-			"metricsEnabled":          "true",
-			"metricsUnixDomainSocket": "/tmp/plugin-template-go.sock",
-			"metricsEndpoint":         "/metrics",
+			"metricsEnabled": sdkConfig.GetEnv("METRICS_ENABLED", "true"),
+			"metricsUnixDomainSocket": sdkConfig.GetEnv(
+				"METRICS_UNIX_DOMAIN_SOCKET", "/tmp/gatewayd-plugin-cache.sock"),
+			"metricsEndpoint": sdkConfig.GetEnv("METRICS_ENDPOINT", "/metrics"),
+			"scriptPath":      sdkConfig.GetEnv("SCRIPT_PATH", "./scripts/index.js"),
 		},
-		// "requires": []interface{}{
-		// 	map[string]interface{}{
-		// 		"name":      "gatewayd-plugin-non-existing",
-		// 		"version":   "0.0.1",
-		// 		"remoteUrl": "github.com/gatewayd-io/gatewayd-plugin-non-existing",
-		// 	},
-		// },
-		"hooks": []interface{}{
-			// Converting HookName to int32 is required because the plugin
-			// framework doesn't support enums.	See:
-			// https://github.com/gatewayd-io/gatewayd-plugin-sdk/issues/3
-			int32(v1.HookName_HOOK_NAME_ON_CONFIG_LOADED),
-			int32(v1.HookName_HOOK_NAME_ON_NEW_LOGGER),
-			int32(v1.HookName_HOOK_NAME_ON_NEW_POOL),
-			int32(v1.HookName_HOOK_NAME_ON_NEW_CLIENT),
-			int32(v1.HookName_HOOK_NAME_ON_NEW_PROXY),
-			int32(v1.HookName_HOOK_NAME_ON_NEW_SERVER),
-			int32(v1.HookName_HOOK_NAME_ON_SIGNAL),
-			int32(v1.HookName_HOOK_NAME_ON_RUN),
-			int32(v1.HookName_HOOK_NAME_ON_BOOTING),
-			int32(v1.HookName_HOOK_NAME_ON_BOOTED),
-			int32(v1.HookName_HOOK_NAME_ON_OPENING),
-			int32(v1.HookName_HOOK_NAME_ON_OPENED),
-			int32(v1.HookName_HOOK_NAME_ON_CLOSING),
-			int32(v1.HookName_HOOK_NAME_ON_CLOSED),
-			int32(v1.HookName_HOOK_NAME_ON_TRAFFIC),
-			int32(v1.HookName_HOOK_NAME_ON_TRAFFIC_FROM_CLIENT),
-			int32(v1.HookName_HOOK_NAME_ON_TRAFFIC_TO_SERVER),
-			int32(v1.HookName_HOOK_NAME_ON_TRAFFIC_FROM_SERVER),
-			int32(v1.HookName_HOOK_NAME_ON_TRAFFIC_TO_CLIENT),
-			int32(v1.HookName_HOOK_NAME_ON_SHUTDOWN),
-			int32(v1.HookName_HOOK_NAME_ON_TICK),
-			// The following hook is invalid, and leads to an error in GatewayD,
-			// but it'll be ignored. This is used for testing purposes. Feel free
-			// to remove it in your plugin.
-			int32(v1.HookName(1000)),
-		},
-		"tags":       []interface{}{"template", "plugin"},
-		"categories": []interface{}{"template"},
+		"hooks":      []interface{}{},
+		"tags":       []interface{}{"plugin", "javascript", "js"},
+		"categories": []interface{}{"builtin"},
+	}
+	Hooks = map[string]v1.HookName{
+		"onConfigLoaded":      v1.HookName_HOOK_NAME_ON_CONFIG_LOADED,
+		"onNewLogger":         v1.HookName_HOOK_NAME_ON_NEW_LOGGER,
+		"onNewPool":           v1.HookName_HOOK_NAME_ON_NEW_POOL,
+		"onNewClient":         v1.HookName_HOOK_NAME_ON_NEW_CLIENT,
+		"onNewProxy":          v1.HookName_HOOK_NAME_ON_NEW_PROXY,
+		"onNewServer":         v1.HookName_HOOK_NAME_ON_NEW_SERVER,
+		"onSignal":            v1.HookName_HOOK_NAME_ON_SIGNAL,
+		"onRun":               v1.HookName_HOOK_NAME_ON_RUN,
+		"onBooting":           v1.HookName_HOOK_NAME_ON_BOOTING,
+		"onBooted":            v1.HookName_HOOK_NAME_ON_BOOTED,
+		"onOpening":           v1.HookName_HOOK_NAME_ON_OPENING,
+		"onOpened":            v1.HookName_HOOK_NAME_ON_OPENED,
+		"onClosing":           v1.HookName_HOOK_NAME_ON_CLOSING,
+		"onClosed":            v1.HookName_HOOK_NAME_ON_CLOSED,
+		"onTraffic":           v1.HookName_HOOK_NAME_ON_TRAFFIC,
+		"onTrafficFromClient": v1.HookName_HOOK_NAME_ON_TRAFFIC_FROM_CLIENT,
+		"onTrafficToServer":   v1.HookName_HOOK_NAME_ON_TRAFFIC_TO_SERVER,
+		"onTrafficFromServer": v1.HookName_HOOK_NAME_ON_TRAFFIC_FROM_SERVER,
+		"onTrafficToClient":   v1.HookName_HOOK_NAME_ON_TRAFFIC_TO_CLIENT,
+		"onShutdown":          v1.HookName_HOOK_NAME_ON_SHUTDOWN,
+		"onTick":              v1.HookName_HOOK_NAME_ON_TICK,
 	}
 )

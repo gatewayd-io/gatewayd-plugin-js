@@ -6,7 +6,7 @@ build:
 	@go build -ldflags "-s -w"
 
 checksum:
-	@sha256sum -b plugin-template-go
+	@sha256sum -b gatewayd-plugin-js
 
 update-all:
 	@go get -u ./...
