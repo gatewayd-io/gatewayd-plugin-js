@@ -19,6 +19,8 @@
 - Helper functions for common tasks such as parsing incoming queries
 - Support for running multiple JS functions as hooks
 - Prometheus metrics for monitoring
+- Logging
+- Configurable via environment variables and command-line arguments
 
 ## Build for testing
 
