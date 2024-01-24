@@ -17,6 +17,7 @@ plugins:
     enabled: True
     # path to the plugin's binary file
     localPath: ../gatewayd-plugin-js/gatewayd-plugin-js
+    url: github.com/gatewayd-io/gatewayd-plugin-js@latest
     # Pass cmdline args to the plugin
     args: ["--log-level", "info"]
     # Pass environment variables to the plugin
