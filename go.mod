@@ -5,7 +5,7 @@ go 1.22
 require (
 	github.com/dop251/goja v0.0.0-20240220182346-e401ed450204
 	github.com/dop251/goja_nodejs v0.0.0-20240221231712-27eeffc9c235
-	github.com/gatewayd-io/gatewayd-plugin-sdk v0.2.5
+	github.com/gatewayd-io/gatewayd-plugin-sdk v0.2.6
 	github.com/getsentry/sentry-go v0.27.0
 	github.com/hashicorp/go-hclog v1.6.2
 	github.com/hashicorp/go-plugin v1.6.0
@@ -35,9 +35,9 @@ require (
 	github.com/prometheus/procfs v0.12.0 // indirect
 	github.com/rs/zerolog v1.32.0 // indirect
 	github.com/tetratelabs/wazero v1.6.1-0.20240124004658-4185e533bb18 // indirect
-	golang.org/x/net v0.21.0 // indirect
-	golang.org/x/sys v0.17.0 // indirect
+	golang.org/x/net v0.22.0 // indirect
+	golang.org/x/sys v0.18.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20240228224816-df926f6c8641 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20240304212257-790db918fca8 // indirect
 	google.golang.org/protobuf v1.32.0 // indirect
 )
