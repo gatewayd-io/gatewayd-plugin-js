@@ -5,7 +5,7 @@ go 1.22
 require (
 	github.com/dop251/goja v0.0.0-20240220182346-e401ed450204
 	github.com/dop251/goja_nodejs v0.0.0-20240221231712-27eeffc9c235
-	github.com/gatewayd-io/gatewayd-plugin-sdk v0.2.7
+	github.com/gatewayd-io/gatewayd-plugin-sdk v0.2.8
 	github.com/getsentry/sentry-go v0.27.0
 	github.com/hashicorp/go-hclog v1.6.2
 	github.com/hashicorp/go-plugin v1.6.0
