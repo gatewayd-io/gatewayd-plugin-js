@@ -1,8 +1,6 @@
 module github.com/gatewayd-io/gatewayd-plugin-js
 
-go 1.23.1
-
-toolchain go1.23.3
+go 1.23.3
 
 require (
 	github.com/dop251/goja v0.0.0-20240220182346-e401ed450204
