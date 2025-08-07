@@ -3,16 +3,16 @@ module github.com/gatewayd-io/gatewayd-plugin-js
 go 1.24
 
 require (
-	github.com/dop251/goja v0.0.0-20250309171923-bcd7cc6bf64c
+	github.com/dop251/goja v0.0.0-20250630131328-58d95d85e994
 	github.com/dop251/goja_nodejs v0.0.0-20250409162600-f7acab6894b0
 	github.com/gatewayd-io/gatewayd-plugin-sdk v0.4.3
-	github.com/getsentry/sentry-go v0.33.0
+	github.com/getsentry/sentry-go v0.35.0
 	github.com/hashicorp/go-hclog v1.6.3
 	github.com/hashicorp/go-plugin v1.6.3
 	github.com/prometheus/client_golang v1.23.0
-	github.com/spf13/cast v1.8.0
+	github.com/spf13/cast v1.9.2
 	github.com/wasilibs/go-pgquery v0.0.0-20250409022910-10ac41983c07
-	golang.org/x/exp v0.0.0-20250506013437-ce4c2cf36ca6
+	golang.org/x/exp v0.0.0-20250718183923-645b1fa84792
 	google.golang.org/grpc v1.74.2
 )
 
