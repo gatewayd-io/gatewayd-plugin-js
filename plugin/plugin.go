@@ -2,6 +2,8 @@ package plugin
 
 import (
 	"context"
+	"fmt"
+	"sync"
 
 	"github.com/dop251/goja"
 	v1 "github.com/gatewayd-io/gatewayd-plugin-sdk/plugin/v1"
@@ -15,6 +17,7 @@ type Plugin struct {
 	v1.GatewayDPluginServiceServer
 	Logger   hclog.Logger
 	VM       *goja.Runtime
+	Mu       sync.Mutex
 	Bindings map[string]goja.Callable
 }
 
@@ -43,17 +46,25 @@ func (p *Plugin) RegisterFunctions(names []string) {
 
 func (p *Plugin) RunFunction(name string, ctx context.Context, req *v1.Struct) (*v1.Struct, error) {
 	if p.Bindings[name] == nil {
-		p.Logger.Debug("RunFunction", "err", "function not found")
+		p.Logger.Debug("RunFunction", "name", name, "err", "function not found")
 		return req, nil
 	}
 
+	p.Mu.Lock()
 	jsReq, err := p.Bindings[name](goja.Undefined(), p.VM.ToValue(ctx), p.VM.ToValue(req))
+	p.Mu.Unlock()
+
 	if err != nil {
-		p.Logger.Error("OnTrafficFromClient", "err", err)
+		p.Logger.Error("RunFunction", "name", name, "err", err)
 		return req, err
 	}
 
-	return jsReq.Export().(*v1.Struct), err
+	result, ok := jsReq.Export().(*v1.Struct)
+	if !ok {
+		return req, fmt.Errorf("JS function %q returned %T, expected *v1.Struct", name, jsReq.Export())
+	}
+
+	return result, nil
 }
 
 func (p *Plugin) GetHooks() []interface{} {
@@ -128,7 +139,7 @@ func (p *Plugin) OnNewLogger(ctx context.Context, req *v1.Struct) (*v1.Struct, e
 func (p *Plugin) OnNewPool(ctx context.Context, req *v1.Struct) (*v1.Struct, error) {
 	OnNewPool.Inc()
 	p.Logger.Debug("OnNewPool", "req", req)
-	req, err := p.RunFunction("onConfigLoaded", ctx, req)
+	req, err := p.RunFunction("onNewPool", ctx, req)
 	p.Logger.Debug("OnNewPool", "req", req.AsMap(), "err", err)
 	return req, err
 }
@@ -243,7 +254,7 @@ func (p *Plugin) OnTraffic(ctx context.Context, req *v1.Struct) (*v1.Struct, err
 	p.Logger.Debug("OnTraffic", "req", req)
 	req, err := p.RunFunction("onTraffic", ctx, req)
 	p.Logger.Debug("OnTraffic", "req", req.AsMap(), "err", err)
-	return req, nil
+	return req, err
 }
 
 // OnShutdown is called when GatewayD is shutting down.
