@@ -71,7 +71,7 @@ func TestRunFunction_Success(t *testing.T) {
 	p.RegisterFunction("onBooted")
 
 	req := newTestRequest(t)
-	result, err := p.RunFunction("onBooted", context.Background(), req)
+	result, err := p.RunFunction(context.Background(), "onBooted", req)
 	assert.NoError(t, err)
 	assert.NotNil(t, result)
 	assert.Equal(t, "value", result.AsMap()["key"])
@@ -81,7 +81,7 @@ func TestRunFunction_NotFound(t *testing.T) {
 	p := newTestPlugin(t)
 	req := newTestRequest(t)
 
-	result, err := p.RunFunction("nonExistent", context.Background(), req)
+	result, err := p.RunFunction(context.Background(), "nonExistent", req)
 	assert.NoError(t, err)
 	assert.Equal(t, req, result)
 }
@@ -93,7 +93,7 @@ func TestRunFunction_JSError(t *testing.T) {
 	p.RegisterFunction("onBooted")
 
 	req := newTestRequest(t)
-	result, err := p.RunFunction("onBooted", context.Background(), req)
+	result, err := p.RunFunction(context.Background(), "onBooted", req)
 	assert.Error(t, err)
 	assert.Equal(t, req, result)
 }
@@ -105,7 +105,7 @@ func TestRunFunction_WrongReturnType(t *testing.T) {
 	p.RegisterFunction("onBooted")
 
 	req := newTestRequest(t)
-	result, err := p.RunFunction("onBooted", context.Background(), req)
+	result, err := p.RunFunction(context.Background(), "onBooted", req)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "expected *v1.Struct")
 	assert.Equal(t, req, result)
@@ -215,7 +215,7 @@ func TestHookMethods_DispatchToCorrectJSFunction(t *testing.T) {
 
 func TestNewJSPlugin(t *testing.T) {
 	p := newTestPlugin(t)
-	jsp := NewJSPlugin(*p)
+	jsp := NewJSPlugin(p)
 	assert.NotNil(t, jsp)
 	assert.Equal(t, p.Logger, jsp.Impl.Logger)
 }
