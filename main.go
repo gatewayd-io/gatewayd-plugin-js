@@ -4,7 +4,9 @@ import (
 	"encoding/base64"
 	"flag"
 	"log"
+	"maps"
 	"os"
+	"slices"
 
 	"github.com/dop251/goja"
 	"github.com/dop251/goja_nodejs/console"
@@ -20,7 +22,6 @@ import (
 	goplugin "github.com/hashicorp/go-plugin"
 	"github.com/spf13/cast"
 	pgQuery "github.com/wasilibs/go-pgquery"
-	"golang.org/x/exp/maps"
 )
 
 func main() {
@@ -92,26 +93,42 @@ func main() {
 		}
 
 		// Register the JS functions as Go functions.
-		pluginInstance.Impl.RegisterFunctions(maps.Keys(plugin.Hooks))
+		pluginInstance.Impl.RegisterFunctions(slices.Collect(maps.Keys(plugin.Hooks)))
 
 		// Register helper functions.
 		if err := pluginInstance.Impl.VM.Set("btoa", func(call goja.FunctionCall) goja.Value {
-			return pluginInstance.Impl.VM.ToValue(base64.RawStdEncoding.EncodeToString([]byte(call.Arguments[0].String())))
+			if len(call.Arguments) < 1 {
+				panic(pluginInstance.Impl.VM.NewTypeError("btoa requires 1 argument"))
+			}
+			return pluginInstance.Impl.VM.ToValue(
+				base64.StdEncoding.EncodeToString([]byte(call.Arguments[0].String())))
 		}); err != nil {
 			logger.Error("Failed to set btoa helper function", "error", err)
 			return
 		}
 
 		if err := pluginInstance.Impl.VM.Set("atob", func(call goja.FunctionCall) goja.Value {
-			str, _ := base64.RawStdEncoding.DecodeString(call.Arguments[0].String())
-			return pluginInstance.Impl.VM.ToValue(string(str))
+			if len(call.Arguments) < 1 {
+				panic(pluginInstance.Impl.VM.NewTypeError("atob requires 1 argument"))
+			}
+			decoded, err := base64.StdEncoding.DecodeString(call.Arguments[0].String())
+			if err != nil {
+				panic(pluginInstance.Impl.VM.NewTypeError("atob: invalid base64 input: " + err.Error()))
+			}
+			return pluginInstance.Impl.VM.ToValue(string(decoded))
 		}); err != nil {
 			logger.Error("Failed to set atob helper function", "error", err)
 			return
 		}
 
 		if err := pluginInstance.Impl.VM.Set("parseSQL", func(call goja.FunctionCall) goja.Value {
-			qStr, _ := pgQuery.ParseToJSON(call.Arguments[0].String())
+			if len(call.Arguments) < 1 {
+				panic(pluginInstance.Impl.VM.NewTypeError("parseSQL requires 1 argument"))
+			}
+			qStr, err := pgQuery.ParseToJSON(call.Arguments[0].String())
+			if err != nil {
+				panic(pluginInstance.Impl.VM.NewTypeError("parseSQL: " + err.Error()))
+			}
 			return pluginInstance.Impl.VM.ToValue(qStr)
 		}); err != nil {
 			logger.Error("Failed to set parseSQL helper function", "error", err)

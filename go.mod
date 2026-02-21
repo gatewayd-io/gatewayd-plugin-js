@@ -12,7 +12,6 @@ require (
 	github.com/prometheus/client_golang v1.23.0
 	github.com/spf13/cast v1.9.2
 	github.com/wasilibs/go-pgquery v0.0.0-20250409022910-10ac41983c07
-	golang.org/x/exp v0.0.0-20250718183923-645b1fa84792
 	google.golang.org/grpc v1.74.2
 )
 
