@@ -2,6 +2,9 @@ package plugin
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"sync"
 
 	"github.com/dop251/goja"
 	v1 "github.com/gatewayd-io/gatewayd-plugin-sdk/plugin/v1"
@@ -10,17 +13,20 @@ import (
 	"google.golang.org/grpc"
 )
 
+var ErrUnexpectedReturnType = errors.New("unexpected JS return type")
+
 type Plugin struct {
 	goplugin.GRPCPlugin
 	v1.GatewayDPluginServiceServer
 	Logger   hclog.Logger
 	VM       *goja.Runtime
+	Mu       sync.Mutex
 	Bindings map[string]goja.Callable
 }
 
 type JSPlugin struct {
 	goplugin.NetRPCUnsupportedPlugin
-	Impl Plugin
+	Impl *Plugin
 }
 
 func (p *Plugin) RegisterFunction(name string) {
@@ -41,19 +47,28 @@ func (p *Plugin) RegisterFunctions(names []string) {
 	}
 }
 
-func (p *Plugin) RunFunction(name string, ctx context.Context, req *v1.Struct) (*v1.Struct, error) {
+func (p *Plugin) RunFunction(ctx context.Context, name string, req *v1.Struct) (*v1.Struct, error) {
 	if p.Bindings[name] == nil {
-		p.Logger.Debug("RunFunction", "err", "function not found")
+		p.Logger.Debug("RunFunction", "name", name, "err", "function not found")
 		return req, nil
 	}
 
+	p.Mu.Lock()
 	jsReq, err := p.Bindings[name](goja.Undefined(), p.VM.ToValue(ctx), p.VM.ToValue(req))
+	p.Mu.Unlock()
+
 	if err != nil {
-		p.Logger.Error("OnTrafficFromClient", "err", err)
+		p.Logger.Error("RunFunction", "name", name, "err", err)
 		return req, err
 	}
 
-	return jsReq.Export().(*v1.Struct), err
+	result, ok := jsReq.Export().(*v1.Struct)
+	if !ok {
+		return req, fmt.Errorf("%w: JS function %q returned %T, expected *v1.Struct",
+			ErrUnexpectedReturnType, name, jsReq.Export())
+	}
+
+	return result, nil
 }
 
 func (p *Plugin) GetHooks() []interface{} {
@@ -67,18 +82,18 @@ func (p *Plugin) GetHooks() []interface{} {
 }
 
 // GRPCServer registers the plugin with the gRPC server.
-func (p *JSPlugin) GRPCServer(b *goplugin.GRPCBroker, s *grpc.Server) error {
-	v1.RegisterGatewayDPluginServiceServer(s, &p.Impl)
+func (p *JSPlugin) GRPCServer(_ *goplugin.GRPCBroker, s *grpc.Server) error {
+	v1.RegisterGatewayDPluginServiceServer(s, p.Impl)
 	return nil
 }
 
 // GRPCClient returns the plugin client.
-func (p *JSPlugin) GRPCClient(ctx context.Context, b *goplugin.GRPCBroker, c *grpc.ClientConn) (interface{}, error) {
+func (p *JSPlugin) GRPCClient(_ context.Context, _ *goplugin.GRPCBroker, c *grpc.ClientConn) (interface{}, error) {
 	return v1.NewGatewayDPluginServiceClient(c), nil
 }
 
-// NewJSPlugin returns a new instance of the TestPlugin.
-func NewJSPlugin(impl Plugin) *JSPlugin {
+// NewJSPlugin returns a new instance of the JSPlugin.
+func NewJSPlugin(impl *Plugin) *JSPlugin {
 	return &JSPlugin{
 		NetRPCUnsupportedPlugin: goplugin.NetRPCUnsupportedPlugin{},
 		Impl:                    impl,
@@ -88,8 +103,7 @@ func NewJSPlugin(impl Plugin) *JSPlugin {
 // GetPluginConfig returns the plugin config. This is called by GatewayD
 // when the plugin is loaded. The plugin config is used to configure the
 // plugin.
-func (p *Plugin) GetPluginConfig(
-	ctx context.Context, _ *v1.Struct) (*v1.Struct, error) {
+func (p *Plugin) GetPluginConfig(_ context.Context, _ *v1.Struct) (*v1.Struct, error) {
 	GetPluginConfig.Inc()
 
 	// Get plugin hooks from registered JS functions.
@@ -108,7 +122,7 @@ func (p *Plugin) OnConfigLoaded(ctx context.Context, req *v1.Struct) (*v1.Struct
 	OnConfigLoaded.Inc()
 	p.Logger.Debug("OnConfigLoaded", "req", req)
 	// The JS function MUST return the request object, which is a *v1.Struct.
-	req, err := p.RunFunction("onConfigLoaded", ctx, req)
+	req, err := p.RunFunction(ctx, "onConfigLoaded", req)
 	p.Logger.Debug("OnConfigLoaded", "req", req.AsMap(), "err", err)
 	return req, err
 }
@@ -118,7 +132,7 @@ func (p *Plugin) OnConfigLoaded(ctx context.Context, req *v1.Struct) (*v1.Struct
 func (p *Plugin) OnNewLogger(ctx context.Context, req *v1.Struct) (*v1.Struct, error) {
 	OnNewLogger.Inc()
 	p.Logger.Debug("OnNewLogger", "req", req)
-	req, err := p.RunFunction("onNewLogger", ctx, req)
+	req, err := p.RunFunction(ctx, "onNewLogger", req)
 	p.Logger.Debug("OnNewLogger", "req", req.AsMap(), "err", err)
 	return req, err
 }
@@ -128,7 +142,7 @@ func (p *Plugin) OnNewLogger(ctx context.Context, req *v1.Struct) (*v1.Struct, e
 func (p *Plugin) OnNewPool(ctx context.Context, req *v1.Struct) (*v1.Struct, error) {
 	OnNewPool.Inc()
 	p.Logger.Debug("OnNewPool", "req", req)
-	req, err := p.RunFunction("onConfigLoaded", ctx, req)
+	req, err := p.RunFunction(ctx, "onNewPool", req)
 	p.Logger.Debug("OnNewPool", "req", req.AsMap(), "err", err)
 	return req, err
 }
@@ -138,7 +152,7 @@ func (p *Plugin) OnNewPool(ctx context.Context, req *v1.Struct) (*v1.Struct, err
 func (p *Plugin) OnNewClient(ctx context.Context, req *v1.Struct) (*v1.Struct, error) {
 	OnNewClient.Inc()
 	p.Logger.Debug("OnNewClient", "req", req)
-	req, err := p.RunFunction("onNewClient", ctx, req)
+	req, err := p.RunFunction(ctx, "onNewClient", req)
 	p.Logger.Debug("OnNewClient", "req", req.AsMap(), "err", err)
 	return req, err
 }
@@ -148,7 +162,7 @@ func (p *Plugin) OnNewClient(ctx context.Context, req *v1.Struct) (*v1.Struct, e
 func (p *Plugin) OnNewProxy(ctx context.Context, req *v1.Struct) (*v1.Struct, error) {
 	OnNewProxy.Inc()
 	p.Logger.Debug("OnNewProxy", "req", req)
-	req, err := p.RunFunction("onNewProxy", ctx, req)
+	req, err := p.RunFunction(ctx, "onNewProxy", req)
 	p.Logger.Debug("OnNewProxy", "req", req.AsMap(), "err", err)
 	return req, err
 }
@@ -158,7 +172,7 @@ func (p *Plugin) OnNewProxy(ctx context.Context, req *v1.Struct) (*v1.Struct, er
 func (p *Plugin) OnNewServer(ctx context.Context, req *v1.Struct) (*v1.Struct, error) {
 	OnNewServer.Inc()
 	p.Logger.Debug("OnNewServer", "req", req)
-	req, err := p.RunFunction("onNewServer", ctx, req)
+	req, err := p.RunFunction(ctx, "onNewServer", req)
 	p.Logger.Debug("OnNewServer", "req", req.AsMap(), "err", err)
 	return req, err
 }
@@ -168,7 +182,7 @@ func (p *Plugin) OnNewServer(ctx context.Context, req *v1.Struct) (*v1.Struct, e
 func (p *Plugin) OnSignal(ctx context.Context, req *v1.Struct) (*v1.Struct, error) {
 	OnSignal.Inc()
 	p.Logger.Debug("OnSignal", "req", req)
-	req, err := p.RunFunction("onSignal", ctx, req)
+	req, err := p.RunFunction(ctx, "onSignal", req)
 	p.Logger.Debug("OnSignal", "req", req.AsMap(), "err", err)
 	return req, err
 }
@@ -177,7 +191,7 @@ func (p *Plugin) OnSignal(ctx context.Context, req *v1.Struct) (*v1.Struct, erro
 func (p *Plugin) OnRun(ctx context.Context, req *v1.Struct) (*v1.Struct, error) {
 	OnRun.Inc()
 	p.Logger.Debug("OnRun", "req", req)
-	req, err := p.RunFunction("onRun", ctx, req)
+	req, err := p.RunFunction(ctx, "onRun", req)
 	p.Logger.Debug("OnRun", "req", req.AsMap(), "err", err)
 	return req, err
 }
@@ -186,7 +200,7 @@ func (p *Plugin) OnRun(ctx context.Context, req *v1.Struct) (*v1.Struct, error) 
 func (p *Plugin) OnBooting(ctx context.Context, req *v1.Struct) (*v1.Struct, error) {
 	OnBooting.Inc()
 	p.Logger.Debug("OnBooting", "req", req)
-	req, err := p.RunFunction("onBooting", ctx, req)
+	req, err := p.RunFunction(ctx, "onBooting", req)
 	p.Logger.Debug("OnBooting", "req", req.AsMap(), "err", err)
 	return req, err
 }
@@ -195,7 +209,7 @@ func (p *Plugin) OnBooting(ctx context.Context, req *v1.Struct) (*v1.Struct, err
 func (p *Plugin) OnBooted(ctx context.Context, req *v1.Struct) (*v1.Struct, error) {
 	OnBooted.Inc()
 	p.Logger.Debug("OnBooted", "req", req)
-	req, err := p.RunFunction("onBooted", ctx, req)
+	req, err := p.RunFunction(ctx, "onBooted", req)
 	p.Logger.Debug("OnBooted", "req", req.AsMap(), "err", err)
 	return req, err
 }
@@ -204,7 +218,7 @@ func (p *Plugin) OnBooted(ctx context.Context, req *v1.Struct) (*v1.Struct, erro
 func (p *Plugin) OnOpening(ctx context.Context, req *v1.Struct) (*v1.Struct, error) {
 	OnOpening.Inc()
 	p.Logger.Debug("OnOpening", "req", req)
-	req, err := p.RunFunction("onOpening", ctx, req)
+	req, err := p.RunFunction(ctx, "onOpening", req)
 	p.Logger.Debug("OnOpening", "req", req.AsMap(), "err", err)
 	return req, err
 }
@@ -213,7 +227,7 @@ func (p *Plugin) OnOpening(ctx context.Context, req *v1.Struct) (*v1.Struct, err
 func (p *Plugin) OnOpened(ctx context.Context, req *v1.Struct) (*v1.Struct, error) {
 	OnOpened.Inc()
 	p.Logger.Debug("OnOpened", "req", req)
-	req, err := p.RunFunction("onOpened", ctx, req)
+	req, err := p.RunFunction(ctx, "onOpened", req)
 	p.Logger.Debug("OnOpened", "req", req.AsMap(), "err", err)
 	return req, err
 }
@@ -222,7 +236,7 @@ func (p *Plugin) OnOpened(ctx context.Context, req *v1.Struct) (*v1.Struct, erro
 func (p *Plugin) OnClosing(ctx context.Context, req *v1.Struct) (*v1.Struct, error) {
 	OnClosing.Inc()
 	p.Logger.Debug("OnClosing", "req", req)
-	req, err := p.RunFunction("onClosing", ctx, req)
+	req, err := p.RunFunction(ctx, "onClosing", req)
 	p.Logger.Debug("OnClosing", "req", req.AsMap(), "err", err)
 	return req, err
 }
@@ -231,7 +245,7 @@ func (p *Plugin) OnClosing(ctx context.Context, req *v1.Struct) (*v1.Struct, err
 func (p *Plugin) OnClosed(ctx context.Context, req *v1.Struct) (*v1.Struct, error) {
 	OnClosed.Inc()
 	p.Logger.Debug("OnClosed", "req", req)
-	req, err := p.RunFunction("onClosed", ctx, req)
+	req, err := p.RunFunction(ctx, "onClosed", req)
 	p.Logger.Debug("OnClosed", "req", req.AsMap(), "err", err)
 	return req, err
 }
@@ -241,16 +255,16 @@ func (p *Plugin) OnClosed(ctx context.Context, req *v1.Struct) (*v1.Struct, erro
 func (p *Plugin) OnTraffic(ctx context.Context, req *v1.Struct) (*v1.Struct, error) {
 	OnTraffic.Inc()
 	p.Logger.Debug("OnTraffic", "req", req)
-	req, err := p.RunFunction("onTraffic", ctx, req)
+	req, err := p.RunFunction(ctx, "onTraffic", req)
 	p.Logger.Debug("OnTraffic", "req", req.AsMap(), "err", err)
-	return req, nil
+	return req, err
 }
 
 // OnShutdown is called when GatewayD is shutting down.
 func (p *Plugin) OnShutdown(ctx context.Context, req *v1.Struct) (*v1.Struct, error) {
 	OnShutdown.Inc()
 	p.Logger.Debug("OnShutdown", "req", req)
-	req, err := p.RunFunction("onShutdown", ctx, req)
+	req, err := p.RunFunction(ctx, "onShutdown", req)
 	p.Logger.Debug("OnShutdown", "req", req.AsMap(), "err", err)
 	return req, err
 }
@@ -259,7 +273,7 @@ func (p *Plugin) OnShutdown(ctx context.Context, req *v1.Struct) (*v1.Struct, er
 func (p *Plugin) OnTick(ctx context.Context, req *v1.Struct) (*v1.Struct, error) {
 	OnTick.Inc()
 	p.Logger.Debug("OnTick", "req", req)
-	req, err := p.RunFunction("onTick", ctx, req)
+	req, err := p.RunFunction(ctx, "onTick", req)
 	p.Logger.Debug("OnTick", "req", req.AsMap(), "err", err)
 	return req, err
 }
@@ -270,7 +284,7 @@ func (p *Plugin) OnTick(ctx context.Context, req *v1.Struct) (*v1.Struct, error)
 func (p *Plugin) OnTrafficFromClient(ctx context.Context, req *v1.Struct) (*v1.Struct, error) {
 	OnTrafficFromClient.Inc()
 	p.Logger.Debug("OnTrafficFromClient", "req", req.AsMap())
-	req, err := p.RunFunction("onTrafficFromClient", ctx, req)
+	req, err := p.RunFunction(ctx, "onTrafficFromClient", req)
 	p.Logger.Debug("OnTrafficFromClient", "req", req.AsMap(), "err", err)
 	return req, err
 }
@@ -281,7 +295,7 @@ func (p *Plugin) OnTrafficFromClient(ctx context.Context, req *v1.Struct) (*v1.S
 func (p *Plugin) OnTrafficToServer(ctx context.Context, req *v1.Struct) (*v1.Struct, error) {
 	OnTrafficToServer.Inc()
 	p.Logger.Debug("OnTrafficToServer", "req", req)
-	req, err := p.RunFunction("onTrafficToServer", ctx, req)
+	req, err := p.RunFunction(ctx, "onTrafficToServer", req)
 	p.Logger.Debug("OnTrafficToServer", "req", req.AsMap(), "err", err)
 	return req, err
 }
@@ -289,11 +303,10 @@ func (p *Plugin) OnTrafficToServer(ctx context.Context, req *v1.Struct) (*v1.Str
 // OnTrafficFromServer is called when a response is received by GatewayD from the server.
 // This can be used to modify the response or terminate the connection by returning an error
 // or a response.
-func (p *Plugin) OnTrafficFromServer(
-	ctx context.Context, resp *v1.Struct) (*v1.Struct, error) {
+func (p *Plugin) OnTrafficFromServer(ctx context.Context, resp *v1.Struct) (*v1.Struct, error) {
 	OnTrafficFromServer.Inc()
 	p.Logger.Debug("OnTrafficFromServer", "resp", resp)
-	resp, err := p.RunFunction("onTrafficFromServer", ctx, resp)
+	resp, err := p.RunFunction(ctx, "onTrafficFromServer", resp)
 	p.Logger.Debug("OnTrafficFromServer", "resp", resp.AsMap(), "err", err)
 	return resp, err
 }
@@ -301,11 +314,10 @@ func (p *Plugin) OnTrafficFromServer(
 // OnTrafficToClient is called when a response is sent by GatewayD to the client.
 // This can be used to modify the response or terminate the connection by returning an error
 // or a response.
-func (p *Plugin) OnTrafficToClient(
-	ctx context.Context, resp *v1.Struct) (*v1.Struct, error) {
+func (p *Plugin) OnTrafficToClient(ctx context.Context, resp *v1.Struct) (*v1.Struct, error) {
 	OnTrafficToClient.Inc()
 	p.Logger.Debug("OnTrafficToClient", "resp", resp)
-	resp, err := p.RunFunction("onTrafficToClient", ctx, resp)
+	resp, err := p.RunFunction(ctx, "onTrafficToClient", resp)
 	p.Logger.Debug("OnTrafficToClient", "resp", resp.AsMap(), "err", err)
 	return resp, err
 }

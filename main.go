@@ -4,7 +4,9 @@ import (
 	"encoding/base64"
 	"flag"
 	"log"
+	"maps"
 	"os"
+	"slices"
 
 	"github.com/dop251/goja"
 	"github.com/dop251/goja_nodejs/console"
@@ -20,12 +22,50 @@ import (
 	goplugin "github.com/hashicorp/go-plugin"
 	"github.com/spf13/cast"
 	pgQuery "github.com/wasilibs/go-pgquery"
-	"golang.org/x/exp/maps"
 )
+
+func setupHelpers(runtime *goja.Runtime) error {
+	if err := runtime.Set("btoa", func(call goja.FunctionCall) goja.Value {
+		if len(call.Arguments) < 1 {
+			panic(runtime.NewTypeError("btoa requires 1 argument"))
+		}
+		return runtime.ToValue(
+			base64.StdEncoding.EncodeToString([]byte(call.Arguments[0].String())))
+	}); err != nil {
+		return err
+	}
+
+	if err := runtime.Set("atob", func(call goja.FunctionCall) goja.Value {
+		if len(call.Arguments) < 1 {
+			panic(runtime.NewTypeError("atob requires 1 argument"))
+		}
+		decoded, err := base64.StdEncoding.DecodeString(call.Arguments[0].String())
+		if err != nil {
+			panic(runtime.NewTypeError("atob: invalid base64 input: " + err.Error()))
+		}
+		return runtime.ToValue(string(decoded))
+	}); err != nil {
+		return err
+	}
+
+	if err := runtime.Set("parseSQL", func(call goja.FunctionCall) goja.Value {
+		if len(call.Arguments) < 1 {
+			panic(runtime.NewTypeError("parseSQL requires 1 argument"))
+		}
+		qStr, err := pgQuery.ParseToJSON(call.Arguments[0].String())
+		if err != nil {
+			panic(runtime.NewTypeError("parseSQL: " + err.Error()))
+		}
+		return runtime.ToValue(qStr)
+	}); err != nil {
+		return err
+	}
+
+	return nil
+}
 
 func main() {
 	sentryDSN := sdkConfig.GetEnv("SENTRY_DSN", "")
-	// Initialize Sentry SDK
 	err := sentry.Init(sentry.ClientOptions{
 		Dsn:              sentryDSN,
 		TracesSampleRate: 1.0,
@@ -34,7 +74,6 @@ func main() {
 		log.Fatalf("Failed to initialize Sentry SDK: %s", err.Error())
 	}
 
-	// Parse command line flags, passed by GatewayD via the plugin config
 	logLevel := flag.String("log-level", "info", "Log level")
 	flag.Parse()
 
@@ -45,17 +84,15 @@ func main() {
 		Color:      hclog.ColorOff,
 	})
 
-	pluginInstance := plugin.NewJSPlugin(plugin.Plugin{
+	pluginInstance := plugin.NewJSPlugin(&plugin.Plugin{
 		Logger:   logger,
 		VM:       goja.New(),
 		Bindings: map[string]goja.Callable{},
 	})
 
-	// Enable the VM to require modules.
 	registry := require.Registry{}
 	registry.Enable(pluginInstance.Impl.VM)
 
-	// Enable the VM to print to stdout and stderr.
 	printer := console.StdPrinter{
 		StdoutPrint: func(s string) { pluginInstance.Impl.Logger.Info(s) },
 		StderrPrint: func(s string) { pluginInstance.Impl.Logger.Error(s) },
@@ -63,60 +100,40 @@ func main() {
 	registry.RegisterNativeModule("console", console.RequireWithPrinter(printer))
 	console.Enable(pluginInstance.Impl.VM)
 
-	// Provide the Value helper to the JS code to make it easier to create
-	// new values inside v1.Struct.
 	if err := pluginInstance.Impl.VM.Set("Value", pluginInstance.Impl.VM.ToValue(v1.NewValue)); err != nil {
 		logger.Error("Failed to set Value helper function", "error", err)
 		return
 	}
 
-	if cfg := cast.ToStringMap(plugin.PluginConfig["config"]); cfg != nil {
-		config := metrics.NewMetricsConfig(cfg)
-		if config != nil && config.Enabled {
-			go metrics.ExposeMetrics(config, logger)
-		}
+	cfg := cast.ToStringMap(plugin.PluginConfig["config"])
+	if cfg == nil {
+		logger.Error("Failed to load plugin config")
+		return
+	}
 
-		scriptPath := cast.ToString(cfg["scriptPath"])
-		// Read the JS code from the script file.
-		script, err := os.ReadFile(scriptPath)
-		if err != nil {
-			logger.Error("Failed to read script file", "error", err)
-			return
-		}
-		logger.Debug("Read script file", "bytes", len(script), "path", scriptPath)
+	config := metrics.NewMetricsConfig(cfg)
+	if config != nil && config.Enabled {
+		go metrics.ExposeMetrics(config, logger)
+	}
 
-		_, err = pluginInstance.Impl.VM.RunString(string(script))
-		if err != nil {
-			logger.Error("Failed to run JS code", "error", err)
-			return
-		}
+	scriptPath := cast.ToString(cfg["scriptPath"])
+	script, err := os.ReadFile(scriptPath)
+	if err != nil {
+		logger.Error("Failed to read script file", "error", err)
+		return
+	}
+	logger.Debug("Read script file", "bytes", len(script), "path", scriptPath)
 
-		// Register the JS functions as Go functions.
-		pluginInstance.Impl.RegisterFunctions(maps.Keys(plugin.Hooks))
+	if _, err = pluginInstance.Impl.VM.RunString(string(script)); err != nil {
+		logger.Error("Failed to run JS code", "error", err)
+		return
+	}
 
-		// Register helper functions.
-		if err := pluginInstance.Impl.VM.Set("btoa", func(call goja.FunctionCall) goja.Value {
-			return pluginInstance.Impl.VM.ToValue(base64.RawStdEncoding.EncodeToString([]byte(call.Arguments[0].String())))
-		}); err != nil {
-			logger.Error("Failed to set btoa helper function", "error", err)
-			return
-		}
+	pluginInstance.Impl.RegisterFunctions(slices.Collect(maps.Keys(plugin.Hooks)))
 
-		if err := pluginInstance.Impl.VM.Set("atob", func(call goja.FunctionCall) goja.Value {
-			str, _ := base64.RawStdEncoding.DecodeString(call.Arguments[0].String())
-			return pluginInstance.Impl.VM.ToValue(string(str))
-		}); err != nil {
-			logger.Error("Failed to set atob helper function", "error", err)
-			return
-		}
-
-		if err := pluginInstance.Impl.VM.Set("parseSQL", func(call goja.FunctionCall) goja.Value {
-			qStr, _ := pgQuery.ParseToJSON(call.Arguments[0].String())
-			return pluginInstance.Impl.VM.ToValue(qStr)
-		}); err != nil {
-			logger.Error("Failed to set parseSQL helper function", "error", err)
-			return
-		}
+	if err := setupHelpers(pluginInstance.Impl.VM); err != nil {
+		logger.Error("Failed to register helper functions", "error", err)
+		return
 	}
 
 	goplugin.Serve(&goplugin.ServeConfig{
