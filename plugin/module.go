@@ -24,7 +24,7 @@ var (
 			"version":   PluginID.GetVersion(),
 			"remoteUrl": PluginID.GetRemoteUrl(),
 		},
-		"description": "Template plugin",
+		"description": "GatewayD plugin for running JavaScript functions as hooks",
 		"authors": []interface{}{
 			"Mostafa Moradian <mostafa@gatewayd.io>",
 		},
@@ -34,7 +34,7 @@ var (
 		"config": map[string]interface{}{
 			"metricsEnabled": sdkConfig.GetEnv("METRICS_ENABLED", "true"),
 			"metricsUnixDomainSocket": sdkConfig.GetEnv(
-				"METRICS_UNIX_DOMAIN_SOCKET", "/tmp/gatewayd-plugin-cache.sock"),
+				"METRICS_UNIX_DOMAIN_SOCKET", "/tmp/gatewayd-plugin-js.sock"),
 			"metricsEndpoint": sdkConfig.GetEnv("METRICS_ENDPOINT", "/metrics"),
 			"scriptPath":      sdkConfig.GetEnv("SCRIPT_PATH", "./scripts/index.js"),
 		},
