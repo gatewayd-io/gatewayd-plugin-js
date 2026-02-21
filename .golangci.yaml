@@ -1,0 +1,42 @@
+run:
+  timeout: 5m
+  tests: false
+linters:
+  enable-all: true
+  disable:
+    - cyclop
+    - wsl
+    - godox
+    - gochecknoglobals
+    - ireturn
+    - nlreturn
+    - testpackage
+    - paralleltest
+    - exhaustruct
+    - gocognit
+    - gochecknoinits
+    - gocyclo
+    - funlen
+    - maintidx
+    - musttag
+    - wrapcheck
+linters-settings:
+  depguard:
+    rules:
+      main:
+        files:
+          - $all
+          - "!$test"
+        allow:
+          - $gostd
+          - "github.com/gatewayd-io/gatewayd-plugin-sdk"
+          - "github.com/gatewayd-io/gatewayd-plugin-js"
+          - "github.com/prometheus/client_golang"
+          - "github.com/hashicorp/go-plugin"
+          - "github.com/hashicorp/go-hclog"
+          - "github.com/getsentry/sentry-go"
+          - "github.com/spf13/cast"
+          - "github.com/dop251/goja"
+          - "github.com/dop251/goja_nodejs"
+          - "github.com/wasilibs/go-pgquery"
+          - "google.golang.org/grpc"
